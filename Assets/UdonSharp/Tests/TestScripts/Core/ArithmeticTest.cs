@@ -22,12 +22,15 @@ namespace UdonSharp.Tests
             IntAssignment();
             LongAssignment();
             ByteIncrement();
+            ByteAssignment();
             LongIncrement();
             ShortIncrement();
             UShortIncrement();
             IntTruncate();
             UintBitOps();
             StringAddition();
+            DecimalOps();
+            BitwiseNot();
         }
 
         void IntBinaryOps()
@@ -150,6 +153,9 @@ namespace UdonSharp.Tests
             tester.TestAssertion("Unsigned Integer Prefix Decrement", --testVal == 5);
             tester.TestAssertion("Unsigned Integer Postfix Decrement", testVal-- == 5);
             tester.TestAssertion("Unsigned Integer Postfix Decrement 2", testVal == 4);
+
+            testVal = 0;
+            tester.TestAssertion("UInt overflow", (testVal - 1u) == uint.MaxValue);
         }
 
         void IntAssignment()
@@ -172,7 +178,7 @@ namespace UdonSharp.Tests
         void ByteAssignment()
         {
             sbyte testVal = 5;
-
+            
             tester.TestAssertion("sByte Add Assign", (testVal += 4) == 9);
             tester.TestAssertion("sByte Subtract Assign", (testVal -= 20) == -11);
             tester.TestAssertion("sByte Multiply Assign", (testVal *= 8) == -88);
@@ -279,6 +285,15 @@ namespace UdonSharp.Tests
             //tester.TestAssertion("uint ^", x == 10);
         }
 
+        void DecimalOps()
+        {
+            decimal x = 4;
+
+            tester.TestAssertion("Decimal equality", x == 4);
+            tester.TestAssertion("Decimal addition", (x + 5) == 9);
+            tester.TestAssertion("Decimal mul", (3 * 0.5m) == 1.5m);
+        }
+
         void StringAddition()
         {
             string s = "ab";
@@ -286,6 +301,26 @@ namespace UdonSharp.Tests
             s += "ef";
             s += string.Format("{0:x2}", 0x42);
             tester.TestAssertion("String addition", s == "abcdef42");
+        }
+
+        void BitwiseNot()
+        {
+            int positiveInt = 30;
+
+            int resultInt = ~positiveInt;
+            tester.TestAssertion("Int bitwise not positive", resultInt == -31);
+            tester.TestAssertion("Int bitwise not positive 2", ~positiveInt == -31);
+            
+            int negativeInt = -30;
+
+            resultInt = ~negativeInt;
+            tester.TestAssertion("Int bitwise not negative", resultInt == 29);
+            tester.TestAssertion("Int bitwise not negative 2", ~negativeInt == 29);
+
+            uint uintTest = 40;
+            uint resultUint = ~uintTest;
+            tester.TestAssertion("uint bitwise not", ~uintTest == 4294967255);
+            tester.TestAssertion("uint bitwise not 2", resultUint == 4294967255);
         }
     }
 }

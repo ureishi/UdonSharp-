@@ -1,8 +1,10 @@
-﻿using System.Collections;
+﻿
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text;
 using UnityEngine;
 using VRC.Udon.Editor;
 using VRC.Udon.Graph;
@@ -25,7 +27,7 @@ namespace UdonSharp
 
     public class ResolverContext
     {
-        public HashSet<string> usingNamespaces { get; private set; }
+        public HashSet<string> usingNamespaces { get; private set; } = new HashSet<string>() { "" }; // Add a blank namespace in case the type is already fully qualified, this is used in ResolveExternType() and ResolveExternMethod()
 
         private static readonly IReadOnlyDictionary<string, string> builtinTypeAliasMap = new Dictionary<string, string>()
         {
@@ -47,47 +49,59 @@ namespace UdonSharp
             { "void", "System.Void" } // void might need to be revisited since it could mess with something
         };
 
-        private Dictionary<string, System.Type> typeLookupCache;
+        private Dictionary<string, System.Type> typeLookupCache = new Dictionary<string, System.Type>();
 
         private static HashSet<string> nodeDefinitionLookup;
 
         private static Dictionary<string, string> builtinEventLookup;
+        private static bool cacheInitRan = false;
+        private static readonly object cacheInitLock = new object();
+
+        public static void CacheInit()
+        {
+            if (cacheInitRan)
+                return;
+
+            lock (cacheInitLock)
+            {
+                if (cacheInitRan)
+                    return;
+
+                if (nodeDefinitionLookup == null)
+                {
+                    nodeDefinitionLookup = new HashSet<string>(UdonEditorManager.Instance.GetNodeDefinitions().Select(e => e.fullName));
+                }
+
+                if (builtinEventLookup == null)
+                {
+                    builtinEventLookup = new Dictionary<string, string>();
+
+                    foreach (UdonNodeDefinition nodeDefinition in UdonEditorManager.Instance.GetNodeDefinitions("Event_"))
+                    {
+                        if (nodeDefinition.fullName == "Event_Custom")
+                            continue;
+
+                        string eventNameStr = nodeDefinition.fullName.Substring(6);
+                        char[] eventName = eventNameStr.ToCharArray();
+                        eventName[0] = char.ToLowerInvariant(eventName[0]);
+
+                        if (!builtinEventLookup.ContainsKey(eventNameStr))
+                            builtinEventLookup.Add(eventNameStr, "_" + new string(eventName));
+                        else
+                            Debug.LogWarning($"Duplicate event node {nodeDefinition.fullName} found");
+                    }
+                }
+
+                cacheInitRan = true;
+            }
+        }
 
         public ResolverContext()
         {
-            usingNamespaces = new HashSet<string>();
-            usingNamespaces.Add(""); // Add a blank namespace in case the type is already fully qualified, this is used in ResolveExternType() and ResolveExternMethod()
+            CacheInit();
 
-            typeLookupCache = new Dictionary<string, System.Type>();
-
-            if (nodeDefinitionLookup == null)
-            {
-                nodeDefinitionLookup = new HashSet<string>();
-
-                foreach (UdonNodeDefinition nodeDefinition in UdonEditorManager.Instance.GetNodeDefinitions())
-                {
-                    nodeDefinitionLookup.Add(nodeDefinition.fullName);
-                }
-
-                //nodeDefinitionLookup.UnionWith(UdonEditorManager.Instance.GetNodeDefinitions().Select(e => e.fullName));
-            }
-
-            if (builtinEventLookup == null)
-            {
-                builtinEventLookup = new Dictionary<string, string>();
-
-                foreach (UdonNodeDefinition nodeDefinition in UdonEditorManager.Instance.GetNodeDefinitions("Event_"))
-                {
-                    if (nodeDefinition.fullName == "Event_Custom")
-                        continue;
-
-                    string eventNameStr = nodeDefinition.fullName.Substring(6);
-                    char[] eventName = eventNameStr.ToCharArray();
-                    eventName[0] = char.ToLowerInvariant(eventName[0]);
-
-                    builtinEventLookup.Add(eventNameStr, "_" + new string(eventName));
-                }
-            }
+            if (!cacheInitRan)
+                throw new System.Exception("Type cache must be initialized before you can construct a ResolverContext");
         }
 
         public void AddNamespace(string namespaceToAdd)
@@ -135,6 +149,31 @@ namespace UdonSharp
             { "_onTriggerStay2D", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(Collider2D), "onTriggerStay2DOther") } },
             { "_onPlayerJoined", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerJoinedPlayer") } },
             { "_onPlayerLeft", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerLeftPlayer") } },
+            { "_onStationEntered", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onStationEnteredPlayer") } },
+            { "_onStationExited", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onStationExitedPlayer") } },
+            { "_onOwnershipRequest", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onOwnershipRequestRequester"), new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onOwnershipRequestNewOwner") } },
+            { "_onPlayerTriggerEnter", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerTriggerEnterPlayer") } },
+            { "_onPlayerTriggerExit", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerTriggerExitPlayer") } },
+            { "_onPlayerTriggerStay", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerTriggerStayPlayer") } },
+            { "_onPlayerCollisionEnter", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerCollisionEnterPlayer") } },
+            { "_onPlayerCollisionExit", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerCollisionExitPlayer") } },
+            { "_onPlayerCollisionStay", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerCollisionStayPlayer") } },
+            { "_onPlayerParticleCollision", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerParticleCollisionPlayer") } },
+            { "_onPlayerRespawn", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onPlayerRespawnPlayer") } },
+            { "_onVideoError", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDK3.Components.Video.VideoError), "onVideoErrorVideoError") } },
+            { "_midiNoteOn", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(int), "midiNoteOnChannel"), new System.Tuple<System.Type, string>(typeof(int), "midiNoteOnNumber"), new System.Tuple<System.Type, string>(typeof(int), "midiNoteOnVelocity") } },
+            { "_midiNoteOff", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(int), "midiNoteOffChannel"), new System.Tuple<System.Type, string>(typeof(int), "midiNoteOffNumber"), new System.Tuple<System.Type, string>(typeof(int), "midiNoteOffVelocity") } },
+            { "_midiControlChange", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(int), "midiControlChangeChannel"), new System.Tuple<System.Type, string>(typeof(int), "midiControlChangeNumber"), new System.Tuple<System.Type, string>(typeof(int), "midiControlChangeValue") } },
+            { "_inputJump", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(bool), "inputJumpBoolValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputJumpArgs") } },
+            { "_inputUse", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(bool), "inputUseBoolValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputUseArgs") } },
+            { "_inputGrab", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(bool), "inputGrabBoolValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputGrabArgs") } },
+            { "_inputDrop", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(bool), "inputDropBoolValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputDropArgs") } },
+            { "_inputMoveHorizontal", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(float), "inputMoveHorizontalFloatValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputMoveHorizontalArgs") } },
+            { "_inputMoveVertical", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(float), "inputMoveVerticalFloatValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputMoveVerticalArgs") } },
+            { "_inputLookHorizontal", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(float), "inputLookHorizontalFloatValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputLookHorizontalArgs") } },
+            { "_inputLookVertical", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(float), "inputLookVerticalFloatValue"), new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.UdonInputEventArgs), "inputLookVerticalArgs") } },
+            { "_onOwnershipTransferred", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.SDKBase.VRCPlayerApi), "onOwnershipTransferredPlayer") } },
+            { "_onPostSerialization", new System.Tuple<System.Type, string>[] { new System.Tuple<System.Type, string>(typeof(VRC.Udon.Common.SerializationResult), "onPostSerializationResult") } },
         };
 
         public System.Tuple<System.Type, string>[] GetMethodCustomArgs(string methodName)
@@ -213,6 +252,7 @@ namespace UdonSharp
         }
 
         private static List<Assembly> loadedAssemblyCache = null;
+        private static readonly object assemblyCacheLock = new object();
         
         public System.Type ResolveExternType(string qualifiedTypeName)
         {
@@ -251,14 +291,27 @@ namespace UdonSharp
                 {
                     if (loadedAssemblyCache == null)
                     {
-                        loadedAssemblyCache = System.AppDomain.CurrentDomain.GetAssemblies()
-                            .OrderBy(e =>
-                                e.GetName().Name.Contains("UnityEngine") ||
-                                e.GetName().Name.Contains("System") || 
-                                e.GetName().Name.Contains("VRC") ||
-                                e.GetName().Name.Contains("Udon") || 
-                                e.GetName().Name.Contains("Assembly-CSharp") ||
-                                e.GetName().Name.Contains("mscorlib")).Reverse().ToList();
+                        lock (assemblyCacheLock)
+                        {
+                            if (loadedAssemblyCache == null)
+                            {
+                                loadedAssemblyCache = System.AppDomain.CurrentDomain.GetAssemblies()
+                                    .OrderBy(e => {
+                                        if (e.IsDynamic || string.IsNullOrEmpty(e.Location) || e.Location.StartsWith("data"))
+                                            return false;
+
+                                        string assemblyName = e.GetName().Name;
+
+                                    return
+                                        assemblyName.Contains("UnityEngine") ||
+                                        assemblyName.Contains("System") ||
+                                        assemblyName.Contains("VRC") ||
+                                        assemblyName.Contains("Udon") ||
+                                        assemblyName.Contains("Assembly-CSharp") ||
+                                        assemblyName.Contains("mscorlib");
+                                    }).Reverse().ToList();
+                            }
+                        }
                     }
                     
                     foreach (Assembly assembly in loadedAssemblyCache)
@@ -285,38 +338,6 @@ namespace UdonSharp
             return null;
         }
 
-        private static Dictionary<System.Type, System.Type> inheritedTypeMap = null;
-
-        private Dictionary<System.Type, System.Type> GetInheritedTypeMap()
-        {
-            if (inheritedTypeMap != null)
-                return inheritedTypeMap;
-
-            inheritedTypeMap = new Dictionary<System.Type, System.Type>();
-
-            IEnumerable<System.Type> typeList = System.AppDomain.CurrentDomain.GetAssemblies().SelectMany(t => t.GetTypes()).Where(t => t != null && t.Namespace != null && t.Namespace.StartsWith("VRC.SDK3.Components"));
-
-            foreach (System.Type childType in typeList)
-            {
-                if (childType.BaseType != null && childType.BaseType.Namespace.StartsWith("VRC.SDKBase"))
-                {
-                    inheritedTypeMap.Add(childType.BaseType, childType);
-                }
-            }
-
-            return inheritedTypeMap;
-        }
-
-        public System.Type RemapBaseType(System.Type type)
-        {
-            var typeMap = GetInheritedTypeMap();
-
-            if (typeMap.ContainsKey(type))
-                return typeMap[type];
-
-            return type;
-        }
-
         public string SanitizeTypeName(string typeName)
         {
             return typeName.Replace(",", "")
@@ -336,7 +357,7 @@ namespace UdonSharp
         public string GetUdonTypeName(System.Type externType, bool skipBaseTypeRemap = false)
         {
             if (!skipBaseTypeRemap)
-                externType = RemapBaseType(externType);
+                externType = UdonSharpUtils.RemapBaseType(externType);
 
             string externTypeName = externType.GetNameWithoutGenericArity();
             while (externType.IsArray || externType.IsByRef)
@@ -404,7 +425,7 @@ namespace UdonSharp
                 methodSourceType = genericArguments.First();
             }
 
-            methodSourceType = RemapBaseType(methodSourceType);
+            methodSourceType = UdonSharpUtils.RemapBaseType(methodSourceType);
 
             bool isUdonSharpBehaviour = false;
 
@@ -427,18 +448,18 @@ namespace UdonSharp
             }
 
             string paramStr = "";
-
+            
             if (methodParams.Length > 0)
             {
-                paramStr += "_"; // Arg separator
-
+                paramStr = "_"; // Arg separator
+            
                 foreach (ParameterInfo parameterInfo in methodParams)
                 {
                     paramStr += $"_{GetUdonTypeName(parameterInfo.ParameterType, true)}";
                 }
             }
             else if (externMethod is ConstructorInfo)
-                paramStr += "__";
+                paramStr = "__";
 
             string returnStr = "";
 
@@ -465,7 +486,7 @@ namespace UdonSharp
 
         public string GetUdonFieldAccessorName(FieldInfo externField, FieldAccessorType accessorType, bool validate = true)
         {
-            System.Type fieldType = RemapBaseType(externField.DeclaringType);
+            System.Type fieldType = UdonSharpUtils.RemapBaseType(externField.DeclaringType);
 
             string functionNamespace = SanitizeTypeName(fieldType.FullName).Replace("VRCUdonUdonBehaviour", "VRCUdonCommonInterfacesIUdonEventReceiver");
             string methodName = $"__{(accessorType == FieldAccessorType.Get ? "get" : "set")}_{externField.Name.Trim('_')}";
@@ -705,12 +726,16 @@ namespace UdonSharp
                 validMethods = validMethods.Where(e => !(e is OperatorMethodInfo)).ToList();
 
             // Count the params using methods in this pass
+            // todo: this still needs a chunk of work to handle when users don't pass anything for params along with handling default arguments before the params args, 
+            //   but Udon doesn't expose any methods where this matters so it can wait till user methods need to support params and default arguments
             int paramsArgCount = 0, nonParamsArgCount = 0;
             foreach (MethodBase methodInfo in validMethods)
             {
                 ParameterInfo[] methodParameters = methodInfo.GetParameters();
 
-                if (methodParameters.Length > 0 && methodParameters.Last().GetCustomAttributes(typeof(System.ParamArrayAttribute), false).Length > 0)
+                if (methodParameters.Length > 0 &&
+                    (methodParameters.Length > methodArgs.Count || !methodParameters.Last().ParameterType.IsImplicitlyAssignableFrom(methodArgs.Last())) && // Ignore params when the user is passing an array directly in for the params array
+                    methodParameters.Last().HasParamsParameter())
                     paramsArgCount++;
                 else
                     nonParamsArgCount++;
@@ -721,7 +746,7 @@ namespace UdonSharp
             {
                 validMethods = validMethods.Where(e => {
                     ParameterInfo[] parameters = e.GetParameters();
-                    return parameters.Length == 0 || !parameters.Last().HasParamsParameter();
+                    return parameters.Length == 0 || !parameters.Last().HasParamsParameter() || parameters.Last().ParameterType.IsImplicitlyAssignableFrom(methodArgs.Last());
                 }).ToList();
             }
 
@@ -840,7 +865,7 @@ namespace UdonSharp
                 {
                     System.Type argType = i < methodArgs.Count ? methodArgs[i] : null;
 
-                    if (!methodParams[i].HasParamsParameter())
+                    if (!methodParams[i].HasParamsParameter() || methodParams[i].ParameterType.IsImplicitlyAssignableFrom(argType))
                     {
                         totalScore += ScoreMethodParamArgPair(methodParams[i], argType);
                     }
@@ -913,6 +938,21 @@ namespace UdonSharp
             }
 
             return nodeDefinitionLookup.Contains(typeName);
+        }
+
+        public bool IsValidUdonType(System.Type type)
+        {
+            string udonTypeName = GetUdonTypeName(type);
+
+            bool isUserDefinedType = UdonSharpUtils.IsUserDefinedType(type);
+
+            if (!ValidateUdonTypeName(udonTypeName, UdonReferenceType.Variable) &&
+                !ValidateUdonTypeName(udonTypeName, UdonReferenceType.Type) &&
+                //VRC.Udon.Editor.UdonEditorManager.Instance.GetTypeFromTypeString(udonTypeName) != null && // I'd assume that this should work instead of the ValidateUdonTypeName calls, but it doesn't pick up a bunch of types
+                !isUserDefinedType)
+                return false;
+
+            return true;
         }
     }
 }

@@ -7,10 +7,13 @@ using VRC.Udon;
 namespace UdonSharp.Tests
 {
     [AddComponentMenu("Udon Sharp/Test Lib/Integration Test Suite")]
+    [UdonBehaviourSyncMode(BehaviourSyncMode.NoVariableSync)]
     public class IntegrationTestSuite : UdonSharpBehaviour
     {
         [System.NonSerialized]
         public bool printPassedTests = false;
+
+        public bool runSuiteTests = true;
 
 #pragma warning disable CS0649
         [SerializeField] string testSuiteName;
@@ -28,6 +31,9 @@ namespace UdonSharp.Tests
 
         public void RunTests()
         {
+            if (!runSuiteTests)
+                return;
+
             testTotalCount = 0;
             testSuccessCount = 0;
 
@@ -47,7 +53,7 @@ namespace UdonSharp.Tests
             string testPrefixText = assertion ? "[<color=#008000>Pass</color>]: " : "[<color=#FF0000>Fail</color>]: ";
 
             if (!assertion || printPassedTests || forcePrintPassedTests)
-                Debug.Log(whitespaceStr + whitespaceStr + testPrefixText + testName);
+                Debug.Log(whitespaceStr + whitespaceStr + "[<color=#00AF54>Test</color>] " + testPrefixText + testName);
 
             ++testTotalCount;
             if (assertion) ++testSuccessCount;

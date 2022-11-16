@@ -21,6 +21,24 @@ namespace UdonSharp.Tests
             TestCustomEvents();
             TestFunctionParameters();
             TestIntermediateReturn();
+            TestObjectArrayArg();
+            TestStringCopy();
+            TestSetGetProgramVar();
+            
+            tester.TestAssertion("gameObject valid", gameObject.name == "LocalFunctionTests");
+            MethodPropertyAliasingTest(gameObject.transform.parent.gameObject);
+            tester.TestAssertion("gameObject valid 2", gameObject.name == "LocalFunctionTests");
+
+            tester.TestAssertion("Variable declaration after methods", heyImDeclaredAfter == 4f);
+
+            TestDelayed();
+        }
+
+        float heyImDeclaredAfter = 4f;
+
+        void MethodPropertyAliasingTest(GameObject gameObject)
+        {
+            tester.TestAssertion("gameObject param valid", gameObject.name == "LocalFunctions");
         }
 
         int GetCountAmount() => 4;
@@ -66,6 +84,108 @@ namespace UdonSharp.Tests
         {
             int result = AddIntegers2(2, 4) + AddIntegers2(6, 9);
             tester.TestAssertion("Method Intermediate Return Value", result == 21);
+        }
+
+        private object[] AddFirstToObjectArray(object[] a, object b)
+        {
+            var n = new object[a.Length + 1];
+            for (var i = 0; i != a.Length; i++)
+            {
+                n[i + 1] = a[i];
+            }
+            n[0] = b;
+            return n;
+        }
+
+        void TestObjectArrayArg()
+        {
+            object[] work = new object[4];
+            object tempData = null;
+            object level = this;
+
+            work = AddFirstToObjectArray(work, new object[] { tempData, level });
+
+            object[] insertedVal = (object[])work[0];
+
+#pragma warning disable CS0252 // Possible unintended reference comparison; left hand side needs cast
+            tester.TestAssertion("Object array to object conversion on creation", insertedVal[1] == this);
+#pragma warning restore CS0252 // Possible unintended reference comparison; left hand side needs cast
+        }
+
+        string targetVal = "";
+        void SetStr(string val)
+        {
+            targetVal = val;
+        }
+
+        // https://github.com/Merlin-san/UdonSharp/issues/40
+        // todo: should probably be moved to another more applicable test suite, probably a string interpolation suite
+        void TestStringCopy()
+        {
+            string testStr = $"test {1}";
+            testStr = $"";
+
+            tester.TestAssertion("Basic string interpolation clear", testStr == "");
+
+            testStr = $"no interpolation here";
+
+            tester.TestAssertion("Basic string interpolation set with no interpolation", testStr == "no interpolation here");
+
+            targetVal = "";
+
+            SetStr($"{20}");
+
+            tester.TestAssertion("Set string interpolation argument", targetVal == "20");
+
+            SetStr($"");
+
+            tester.TestAssertion("String interpolation arg clear", targetVal == "");
+
+            SetStr("Hello");
+
+            tester.TestAssertion("Basic string arg set", targetVal == "Hello");
+
+            SetStr("");
+
+            tester.TestAssertion("Basic string arg clear", targetVal == "");
+        }
+
+#pragma warning disable CS0649
+        int programVar;
+#pragma warning restore CS0649 
+
+        void TestSetGetProgramVar()
+        {
+            SetProgramVariable("programVar", 5);
+
+            tester.TestAssertion("SetProgramVariable local", programVar == 5);
+            tester.TestAssertion("GetProgramVariable local", (int)GetProgramVariable("programVar") == 5);
+        }
+
+        public void PrintThingDelayed()
+        {
+            //Debug.Log("I printed delayed frame: " + Time.frameCount);
+        }
+
+        public void PrintThingDelayedLate()
+        {
+            //Debug.Log("I printed delayed LateUpdate frame: " + Time.frameCount);
+        }
+
+        void TestDelayed()
+        {
+            SendCustomEventDelayedSeconds(nameof(PrintThingDelayed), 4f);
+            SendCustomEventDelayedSeconds(nameof(PrintThingDelayed), 4f, VRC.Udon.Common.Enums.EventTiming.Update);
+            SendCustomEventDelayedSeconds(nameof(PrintThingDelayedLate), 4f, VRC.Udon.Common.Enums.EventTiming.LateUpdate);
+
+            LocalFunctionTest myself = this;
+            myself.SendCustomEventDelayedSeconds(nameof(PrintThingDelayed), 5f);
+            myself.SendCustomEventDelayedFrames(nameof(PrintThingDelayed), 0);
+            myself.SendCustomEventDelayedFrames(nameof(PrintThingDelayed), 1);
+            myself.SendCustomEventDelayedFrames(nameof(PrintThingDelayedLate), 1, VRC.Udon.Common.Enums.EventTiming.LateUpdate);
+
+            UdonBehaviour myselfUdon = (UdonBehaviour)(Component)myself;
+            myselfUdon.SendCustomEventDelayedFrames(nameof(PrintThingDelayed), 10);
         }
     }
 }
